@@ -2,3 +2,5 @@
 .env
 __pycache__/
 *.pyc
+app/knowledge/chroma_db
+.DS_Store

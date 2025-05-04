@@ -1,5 +1,7 @@
 import os
 from dotenv import load_dotenv
+from loaders.yaml_loader import YAMLLoader
+from langchain_community.document_loaders import PyPDFLoader
 
 # Load environment variables from .env file
 load_dotenv()
@@ -10,10 +12,18 @@ class Config:
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-    # RAG Configurations
-    CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+    # RAG Configuration
+    CHROMA_PATH = "app/knowledge/chroma_db"
+    DOCS_PATH = "app/knowledge/docs"
+    CHUNK_SIZE: int = 500
+    CHUNK_OVERLAP: int = 300
+    SUPPORTED_EXTENSIONS = {
+        ".pdf": PyPDFLoader,
+        ".yml": YAMLLoader,
+        ".yaml": YAMLLoader
+    }
     
-    OUTPUT_PATH = os.getenv("OUTPUT_PATH", "output/")
+    # Output
+    OUTPUT_PATH = "output/"
 
-config = Config()
+Config = Config()
