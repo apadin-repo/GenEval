@@ -8,14 +8,15 @@ class TestPlanGenerator:
         self.docs = docs
         self.llm = ChatOpenAI(temperature=temperature, model_name=model_name)
 
-    def build_prompt(self) -> list:
+    def build_prompt(self, category) -> list:
+        self.system_prompt = self.system_prompt.replace("[CATEGORY]", category)
         self.context_prompt = self.context_prompt.replace("[SYSTEM_DESCRIPTION]", self.docs or "No documentation provided.")
         return [
             SystemMessage(content=self.system_prompt),
             HumanMessage(content=self.context_prompt)
         ]
 
-    def generate(self) -> str:
-        prompt_messages = self.build_prompt()
+    def generate(self, category) -> str:
+        prompt_messages = self.build_prompt(category)
         response = self.llm.invoke(prompt_messages)
         return response.content
