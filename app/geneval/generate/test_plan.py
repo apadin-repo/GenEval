@@ -2,6 +2,7 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 from geneval.generate.prompts import Prompts
 from config.settings import Config
+import json
 
 class TestPlan:
     def __init__(self): 
@@ -18,11 +19,11 @@ class TestPlan:
         ]
 
     def generate(self, context) -> str:
-        response = ""
+        response = []
         for category in Prompts.CATEGORIES:
             prompt_messages = self.__build_prompt(category, context)
             output = self.__llm.invoke(prompt_messages)
-            response += output.content + "\n\n"
+            response = response + (json.loads(output.content))
         return response
 
 TestPlan = TestPlan()

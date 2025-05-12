@@ -2,6 +2,7 @@ import gradio as gr
 from ui.style import Style
 import os
 from geneval.generate.test_plan import TestPlan
+import json
 
 def handle_generate_with_status(description, files):
     yield gr.update(interactive=False), "### Generating test plan... This may take a few moments.", gr.update(value="")
@@ -18,8 +19,11 @@ def handle_generate_with_status(description, files):
                 except Exception as e:
                     file_contents.append(f"--Failed to read {filename}: {e}--")
     context = "--- Application Description ---\n" + description + "\n\n--- Application README ---\n" + "\n".join(file_contents)
-    result = TestPlan.generate(context)
+    result = json.dumps(TestPlan.generate(context), indent=2)
     yield gr.update(interactive=True), "", result 
+
+def convertToMarkDown():
+  pass
 
 # ----- UI -----
 with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
