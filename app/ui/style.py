@@ -28,7 +28,7 @@ class Style:
             border: 1px solid #d1d5db !important;
             padding: 8px 16px !important;
             margin-bottom: 12px !important;
-            max-height: 500px;
+            max-height: 800px;
             overflow-y: auto;
         }
         #upload-container {

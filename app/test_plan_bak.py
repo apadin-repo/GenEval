@@ -19,7 +19,6 @@ class TestPlan:
             HumanMessage(content=self.__context_prompt)
         ]
 
-
     def generate(self, context) -> pd.DataFrame:
         dfs = []
 
@@ -38,6 +37,7 @@ class TestPlan:
         if not dfs:
             return pd.DataFrame([]) # empty df
     
-        return dfs
+        return pd.concat(dfs, ignore_index=True)
+    
 
 TestPlan = TestPlan()
