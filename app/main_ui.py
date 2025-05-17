@@ -3,17 +3,38 @@ from ui.style import Style
 import os
 from geneval.generate.test_plan import TestPlan
 import pandas as pd
+from tempfile import NamedTemporaryFile
+import re
+
 
 # # TODO:
-# - fix category_titles (remove?)
 # - capture changes in the test plan 
-# - When something hangesin the df that is not the 'Actual Output' column, revert to original value?
-# - Add short description to Description? 
+# - When something changes in the df that is not the 'Actual Output' column, revert to original value?
+# - review xml export, onoy 5 tabs?
+# - Export PDF
+# - another way to complete test plan?
+# - take test plan and run risk assessmemnt, print assessment Markdown and PDF
 
-MAX_CATEGORIES = 10
+test_plan = []
+CATEGORIES = TestPlan.get_categories()
 
 def handle_generate(description, files):
-  yield gr.update(interactive=False), gr.update(value="Generating test plan... This may take a few moments."), *[gr.update(visible=False) for _ in range(MAX_CATEGORIES * 2)], gr.update(visible=False)
+  updates = [
+    gr.update(interactive=False),
+    gr.update(value="Generating test plan... This may take a few moments.")
+  ]
+
+  for _ in range(len(CATEGORIES)):
+    updates.extend([
+      gr.update(visible=False),  # Group
+      gr.update(value=""),       # Title
+      gr.update(value=""),       # Description
+      gr.update(value=pd.DataFrame())  # Empty DataFrame
+    ])
+
+  updates.append(gr.update(visible=False))  # Hide container
+
+  yield tuple(updates)
 
   file_contents = []
   if files:
@@ -29,27 +50,61 @@ def handle_generate(description, files):
           file_contents.append(f"--Failed to read {filename}: {e}--")
 
   context = "--- Application Description ---\n" + description + "\n\n--- Application README ---\n" + "\n".join(file_contents)
-  result = TestPlan.generate(context)
+    
+  for i, category in enumerate(CATEGORIES):
+    
+    df = TestPlan.generate(category['category'], context)
+    
+    test_plan.append({
+      'title': category['category'],
+      'description': category['description'],
+      'test_plan': df
+    })
+    
+    updates = [
+      gr.update(interactive=False),
+      gr.update(value="Generating test plan... This may take a few moments.")
+    ]
 
-  title_updates, table_updates = to_gDataframe(result, max_components=MAX_CATEGORIES)
+    for i in range(len(CATEGORIES)):
+      if i < len(test_plan):
+        updates.extend([
+          gr.update(visible=True),  # Group
+          gr.update(value=f"### {test_plan[i]['title']}"),
+          gr.update(value=test_plan[i]['description']),
+          gr.update(value=test_plan[i]['test_plan'])
+        ])
+      else:
+        updates.extend([
+          gr.update(visible=False),  # Group
+          gr.update(value=""),
+          gr.update(value=""),
+          gr.update(value=pd.DataFrame()),
+        ])
 
-  yield gr.update(interactive=True), gr.update(value="Generate Test Plan"), *title_updates, *table_updates, gr.update(visible=True)
+    updates.append(gr.update(visible=True))  # Show container
+    yield tuple(updates)
 
-def to_gDataframe(dfs: list[pd.DataFrame], max_components=5) -> tuple:
-  title_updates = []
-  dataframe_updates = []
+  updates[:2] = [ # Update the button when is done
+      gr.update(interactive=True),
+      gr.update(value="Generate Test Plan")
+    ]
 
-  for i in range(max_components):
-    if i < len(dfs):
-      df = dfs[i]
-      category = df["Category"].iloc[0] if "Category" in df.columns else f"Test Plan {i+1}"
-      title_updates.append(gr.update(value=f"## {category}", visible=True))
-      dataframe_updates.append(gr.update(value=df, visible=True))
-    else:
-      title_updates.append(gr.update(visible=False))
-      dataframe_updates.append(gr.update(visible=False))
+  yield tuple(updates)
 
-  return title_updates, dataframe_updates
+def clean_sheet_name(name):
+  return re.sub(r'[:\\/*?\[\]]', '', name)[:31]
+
+def export_test_plan():
+  if not test_plan:
+    return None
+  
+  with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+    with pd.ExcelWriter(tmp.name, engine='xlsxwriter') as writer:
+      for category in test_plan:
+        sheet_name = clean_sheet_name(category["title"])
+        category["test_plan"].to_excel(writer, sheet_name=sheet_name, index=False)
+    return tmp.name
 
 # ----- UI -----
 with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
@@ -58,7 +113,7 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
     gr.Markdown("# GenAI Evaluation Tool")
   with gr.Row(elem_id="output-container"):
     with gr.Column(scale=1):
-      gr.Markdown("## App Description (optional)")
+      gr.Markdown("# App Description (optional)")
       gr.Markdown("Describe your LLM-based application here to help the tool generate a customized test plan focused on security, bias, fairness, toxicity, and more. You can either paste a write-up or upload a README file. If no details are provided, a general-purpose test plan will be created.")
       gr.Markdown("---")
       with gr.Row():
@@ -75,33 +130,35 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
             elem_id="upload-container"
           )
       with gr.Row():
-        generate_test_plan_btn = gr.Button("Generate Test Plan", elem_classes="green-button")
+        generate_test_plan_btn = gr.Button("Generate Test Plan")
   # ./---------------------- Application Description ----------------------
 
   # ---------------------- Test Plan ----------------------
-  with gr.Row(elem_id="output-container", visible=False) as tp: 
+  with gr.Row(elem_id="output-container", visible=True) as tp: 
     with gr.Column():
       with gr.Row():
         with gr.Column(scale=4):
-          gr.Markdown("## Test Plan")
-          gr.Markdown("This section displays the generated test plan tailored to your application's context. You can export it as an Excel file and complete the tests offline using the provided prompts. Alternatively, you can complete the tests directly within the application by filling in the \"Actual Output\" column for each test case. Once all results are provided—either by uploading the completed Excel file or entering them manually - the tool will analyze the results and assess the associated risks based on frameworks such as MITRE ATLAS, NIST AI RMF, and OWASP LLM Top 10.")
+          gr.Markdown("# Test Plan")
+          gr.Markdown("This section displays the generated test plan tailored to your application\'s context. You can export it as an Excel file and complete the tests offline using the provided prompts. Alternatively, you can complete the tests directly within the application by filling in the \"Actual Output\" column for each test case. Once all results are provided - either by uploading the completed Excel file or entering them manually - the tool will analyze the results and assess the associated risks based on frameworks such as MITRE ATLAS, NIST AI RMF, and OWASP LLM Top 10.")
+        with gr.Column(scale=1):
+          export_btn = gr.DownloadButton("📥 Export", visible=True)
       gr.Markdown("---")
 
-      category_titles = []
-      dataframe_outputs = []
-
-      for i in range(MAX_CATEGORIES):
-        title = gr.Markdown("## Category", visible=False)
-        df = gr.Dataframe(visible=False, interactive=True, wrap=True)
-        category_titles.append(title)
-        dataframe_outputs.append(df)
+      with gr.Column(visible=False) as category_output_container:
+        category_blocks = []
+        for _ in range(len(CATEGORIES)): 
+          with gr.Column(visible=False) as block:
+            title = gr.Markdown()
+            desc = gr.Markdown()
+            df = gr.Dataframe(wrap=True, interactive=True)
+            category_blocks.append((block, title, desc, df))
 
       with gr.Row():
-        submit_btn = gr.Button("Submit Test Results", elem_classes="green-button")
+        submit_btn = gr.Button("Submit Test Results", interactive=False)
   # ./---------------------- Test Test Plan ----------------------
 
   # ---------------------- Risk Assessment ----------------------
-  with gr.Row(elem_id="output-container", visible=False) as ra: 
+  with gr.Row(elem_id="output-container", visible=True) as ra: 
     with gr.Column():
       with gr.Row():
         with gr.Column(scale=4):
@@ -116,11 +173,22 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
   generate_test_plan_btn.click(
     fn=handle_generate,
     inputs=[app_description, app_files],
-    outputs=[generate_test_plan_btn, generate_test_plan_btn, *category_titles, *dataframe_outputs, tp],
+    outputs=[
+      generate_test_plan_btn,
+      generate_test_plan_btn,
+      *[c for block in category_blocks for c in block],
+      category_output_container
+    ],
     show_progress=True,
     queue=True
   )
 
+  export_btn.click(
+    fn=export_test_plan,
+    inputs=[],
+    outputs=[export_btn]
+  )
+
+
 if __name__ == '__main__':
     demo.launch()
-

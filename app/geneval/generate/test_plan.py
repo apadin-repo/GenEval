@@ -19,25 +19,24 @@ class TestPlan:
             HumanMessage(content=self.__context_prompt)
         ]
 
+    def get_categories(self):
+        return Prompts.CATEGORIES 
 
-    def generate(self, context) -> pd.DataFrame:
-        dfs = []
+    def generate(self, category, context) -> pd.DataFrame:
+        df = pd.DataFrame() # empty df
+        prompt_messages = self.__build_prompt(category, context)
+        output = self.__llm.invoke(prompt_messages)
+        csv_text = output.content.strip()
 
-        for category in Prompts.CATEGORIES:
-            prompt_messages = self.__build_prompt(category, context)
-            output = self.__llm.invoke(prompt_messages)
-            csv_text = output.content.strip()
-           
-            try:
-                df = pd.read_csv(StringIO(csv_text))
-                dfs.append(df)
-            except Exception as e:
-                print(f"Failed to parse CSV for category {category}: {e}")
-                continue
+        try:
+            df = pd.read_csv(StringIO(csv_text))
+        except Exception as e:
+            print(f"Failed to parse CSV for category {category}: {e}")
         
-        if not dfs:
-            return pd.DataFrame([]) # empty df
-    
-        return dfs
+        df.drop('Category', axis=1, inplace=True)
+        df['Actual Output'] = ""
+        df.rename(columns={'Actual Output': 'Paste Output Here'}, inplace=True)
+
+        return df
 
 TestPlan = TestPlan()
