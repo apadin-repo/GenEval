@@ -21,6 +21,9 @@ class TestPlan:
 
     def get_categories(self):
         return Prompts.CATEGORIES 
+    
+    def get_test_plan_md(self):
+        return Prompts.TEST_CASE_DOC
 
     def generate(self, category, context) -> pd.DataFrame:
         df = pd.DataFrame() # empty df
@@ -32,10 +35,6 @@ class TestPlan:
             df = pd.read_csv(StringIO(csv_text))
         except Exception as e:
             print(f"Failed to parse CSV for category {category}: {e}")
-        
-        df.drop('Category', axis=1, inplace=True)
-        df['Actual Output'] = ""
-        df.rename(columns={'Actual Output': 'Paste Output Here'}, inplace=True)
 
         return df
 

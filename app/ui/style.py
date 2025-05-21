@@ -1,6 +1,21 @@
 
 # style class
 class Style:
+
+    TABLE_CSS = """
+        table {
+        border-collapse: collapse;
+        width: 100%;
+        }
+        th, td {
+        border: 1px solid #444;
+        padding: 8px;
+        text-align: left;
+        }
+        th {
+        background-color: #f2f2f2;
+        }
+    """
     
     CSS = """
         #output-container {
@@ -28,7 +43,7 @@ class Style:
             border: 1px solid #d1d5db !important;
             padding: 8px 16px !important;
             margin-bottom: 12px !important;
-            max-height: 800px;
+            max-height: 900px;
             overflow-y: auto;
         }
         #upload-container {

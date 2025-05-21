@@ -5,7 +5,8 @@ from geneval.generate.test_plan import TestPlan
 import pandas as pd
 from tempfile import NamedTemporaryFile
 import re
-
+import tempfile
+from markdown_pdf import MarkdownPdf, Section
 
 # # TODO:
 # - capture changes in the test plan 
@@ -15,7 +16,8 @@ import re
 # - another way to complete test plan?
 # - take test plan and run risk assessmemnt, print assessment Markdown and PDF
 
-test_plan = []
+TEST_PLAN = []
+TEST_PLAN_DFS = []
 CATEGORIES = TestPlan.get_categories()
 
 def handle_generate(description, files):
@@ -55,7 +57,12 @@ def handle_generate(description, files):
     
     df = TestPlan.generate(category['category'], context)
     
-    test_plan.append({
+    TEST_PLAN_DFS.append(df)
+    
+    df.drop('Category', axis=1, inplace=True)
+    df.drop('Actual Output', axis=1, inplace=True)
+    
+    TEST_PLAN.append({
       'title': category['category'],
       'description': category['description'],
       'test_plan': df
@@ -67,12 +74,12 @@ def handle_generate(description, files):
     ]
 
     for i in range(len(CATEGORIES)):
-      if i < len(test_plan):
+      if i < len(TEST_PLAN):
         updates.extend([
           gr.update(visible=True),  # Group
-          gr.update(value=f"### {test_plan[i]['title']}"),
-          gr.update(value=test_plan[i]['description']),
-          gr.update(value=test_plan[i]['test_plan'])
+          gr.update(value=f"### {TEST_PLAN[i]['title']}"),
+          gr.update(value=TEST_PLAN[i]['description']),
+          gr.update(value=TEST_PLAN[i]['test_plan'])
         ])
       else:
         updates.extend([
@@ -96,15 +103,58 @@ def clean_sheet_name(name):
   return re.sub(r'[:\\/*?\[\]]', '', name)[:31]
 
 def export_test_plan():
-  if not test_plan:
+  result = pd.DataFrame()
+  for df in TEST_PLAN_DFS:
+      result = pd.concat([result, df], ignore_index=True)
+  
+  if not TEST_PLAN:
     return None
   
   with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
     with pd.ExcelWriter(tmp.name, engine='xlsxwriter') as writer:
-      for category in test_plan:
-        sheet_name = clean_sheet_name(category["title"])
-        category["test_plan"].to_excel(writer, sheet_name=sheet_name, index=False)
+      result.to_excel(writer, sheet_name="Test Plan", index=False)
     return tmp.name
+
+def export_test_pdf():
+  md = TestPlan.get_test_plan_md()
+  for idx, item in enumerate(TEST_PLAN, 1):
+    md += f"## {idx}. {item['title']}\n\n"
+    md += f"{item['description']}\n\n"
+
+    df = item['test_plan']
+    # df['Input'] = df['Input'].apply(lambda x: f"`{x}`")
+    df['Expected Output'] = df['Expected Output'].apply(lambda x: f"`{x}`")
+
+    md += df.to_markdown(index=False) + "\n\n"
+
+  tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+  tmp_path = tmp.name
+
+  # Generate PDF from markdown
+  styled_md = f"""
+<style>
+table {{
+  border-collapse: collapse;
+  width: 100%;
+}}
+th, td {{
+  border: 1px solid black;
+  border-collapse: collapse;
+  padding: 2px;
+  text-align: left;
+}}
+</style>
+{md}
+"""
+
+
+  pdf = MarkdownPdf()
+  pdf.meta["title"] = "Markdown Export"
+  pdf.add_section(Section(styled_md, toc=False))
+  pdf.save(tmp_path)
+
+  return tmp_path  # this becomes the downloadable file
+
 
 # ----- UI -----
 with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
@@ -139,9 +189,13 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
       with gr.Row():
         with gr.Column(scale=4):
           gr.Markdown("# Test Plan")
-          gr.Markdown("This section displays the generated test plan tailored to your application\'s context. You can export it as an Excel file and complete the tests offline using the provided prompts. Alternatively, you can complete the tests directly within the application by filling in the \"Actual Output\" column for each test case. Once all results are provided - either by uploading the completed Excel file or entering them manually - the tool will analyze the results and assess the associated risks based on frameworks such as MITRE ATLAS, NIST AI RMF, and OWASP LLM Top 10.")
         with gr.Column(scale=1):
-          export_btn = gr.DownloadButton("📥 Export", visible=True)
+          export_btn = gr.DownloadButton("📥 Excel", visible=True)
+        with gr.Column(scale=1):
+          export_pdf = gr.DownloadButton("📥 PDF", visible=True)
+          download_file = gr.File(label="Download PDF", visible=False)
+      with gr.Row(): 
+        gr.Markdown("This section displays the generated test plan tailored to your application\'s context. You can export it as an Excel file and complete the tests offline using the provided prompts. Alternatively, you can complete the tests directly within the application by filling in the \"Actual Output\" column for each test case. Once all results are provided - either by uploading the completed Excel file or entering them manually - the tool will analyze the results and assess the associated risks based on frameworks such as MITRE ATLAS, NIST AI RMF, and OWASP LLM Top 10.")
       gr.Markdown("---")
 
       with gr.Column(visible=False) as category_output_container:
@@ -150,7 +204,7 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
           with gr.Column(visible=False) as block:
             title = gr.Markdown()
             desc = gr.Markdown()
-            df = gr.Dataframe(wrap=True, interactive=True)
+            df = gr.Dataframe(wrap=True, interactive=False)
             category_blocks.append((block, title, desc, df))
 
       with gr.Row():
@@ -162,7 +216,7 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
     with gr.Column():
       with gr.Row():
         with gr.Column(scale=4):
-          gr.Markdown("## Risk Assessment")
+          gr.Markdown("# Risk Assessment")
           gr.Markdown("Based on your test results, this section evaluates the level of risk and provides a structured report. It maps findings to recognized frameworks such as MITRE ATLAS, NIST AI RMF, and OWASP LLM Top 10.")
         with gr.Column(scale=1):
           generate_btn = gr.Button("📥 Export")
@@ -188,6 +242,16 @@ with gr.Blocks(title="GenAI Evaluation Tool", css=Style.CSS) as demo:
     inputs=[],
     outputs=[export_btn]
   )
+
+  export_pdf.click(
+    fn=export_test_pdf,
+    inputs=[],
+    outputs=[export_pdf]
+  )
+
+  export_pdf.click(fn=export_test_pdf, inputs=[], outputs=download_file)
+  download_file.change(lambda x: gr.File(visible=True), inputs=download_file, outputs=download_file)
+
 
 
 if __name__ == '__main__':
